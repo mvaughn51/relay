@@ -1,0 +1,13 @@
+{
+  "name": "asv-relay",
+  "version": "1.0.0",
+  "description": "RockBLOCK MO webhook receiver — pushes to connected clients via WebSocket",
+  "main": "relay.js",
+  "scripts": {
+    "start": "node relay.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "ws": "^8.18.0"
+  }
+}
