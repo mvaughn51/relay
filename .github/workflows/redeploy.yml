@@ -1,0 +1,12 @@
+name: Redeploy on Render
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  redeploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render redeploy
+        run: curl -fsSX POST "${{ secrets.RENDER_DEPLOY_HOOK }}"
