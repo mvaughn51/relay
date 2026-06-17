@@ -101,6 +101,12 @@ app.get('/', (_req, res) => res.send(`<!DOCTYPE html>
     .none{color:#475569;font-style:italic;font-size:.85rem}
     .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#4ade80;margin-right:6px;animation:pulse 2s infinite}
     @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    .test{margin-top:1rem;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:1rem}
+    .test .label{font-size:.75rem;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.6rem}
+    input[type=text]{width:100%;padding:.35rem .6rem;background:#0f172a;color:#e2e8f0;border:1px solid #334155;border-radius:4px;font-family:monospace;font-size:.875rem;margin-bottom:.5rem}
+    button{padding:.4rem 1rem;cursor:pointer;background:#1d4ed8;color:#fff;border:none;border-radius:4px;font-size:.875rem}
+    button:hover{background:#2563eb}
+    #testResult{margin-top:.5rem;font-size:.8rem;color:#86efac;min-height:1.2em}
   </style>
 </head>
 <body>
@@ -113,6 +119,12 @@ app.get('/', (_req, res) => res.send(`<!DOCTYPE html>
   <div class="last">
     <div class="label">Last Message</div>
     <div id="last"><span class="none">none yet</span></div>
+  </div>
+  <div class="test">
+    <div class="label">Send test message</div>
+    <input type="text" id="imeiInput" placeholder="IMEI (default 300000000000001)">
+    <button onclick="sendTest()">Send</button>
+    <div id="testResult"></div>
   </div>
   <script>
     async function refresh() {
@@ -133,6 +145,24 @@ app.get('/', (_req, res) => res.send(`<!DOCTYPE html>
     }
     refresh();
     setInterval(refresh, 3000);
+
+    let testMomsn = 1;
+    async function sendTest() {
+      const out = document.getElementById('testResult');
+      const imei = document.getElementById('imeiInput').value.trim() || '300000000000001';
+      out.textContent = 'Sending…';
+      try {
+        const body = new URLSearchParams({
+          imei, momsn: testMomsn++,
+          transmit_time: new Date().toISOString(),
+          iridium_latitude: '21.3', iridium_longitude: '-157.8', iridium_cep: '5',
+          data: '234539413232343030303030304545303646463430344430454146363830363641303030303030303030303030303030303630464138313134323535424138423830343030303031413030303337453034303030302c302c302a4646',
+        });
+        const r = await fetch('/webhook', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+        out.textContent = r.ok ? 'OK' : 'HTTP ' + r.status;
+        refresh();
+      } catch(e) { out.textContent = 'Error: ' + e.message; }
+    }
   </script>
 </body>
 </html>`));
