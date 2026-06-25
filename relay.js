@@ -1,11 +1,139 @@
 const http = require('http');
 const https = require('https');
 const express = require('express');
+const session = require('express-session');
+const passport = require('passport');
+const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const { WebSocketServer } = require('ws');
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(express.urlencoded({ extended: false }));
 app.use(express.json());
+app.use(session({
+	secret: process.env.SESSION_SECRET || 'relay-session-secret',
+	resave: false,
+	saveUninitialized: false,
+	cookie: { secure: process.env.NODE_ENV === 'production' },
+}));
+app.use(passport.initialize());
+app.use(passport.session());
+
+const googleClientId = process.env.GOOGLE_CLIENT_ID;
+const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
+const googleCallbackUrl = process.env.GOOGLE_CALLBACK_URL || `${process.env.RENDER_EXTERNAL_URL || 'http://localhost:3001'}/auth/google/callback`;
+const allowedEmails = (process.env.GOOGLE_ALLOWED_EMAILS || '')
+	.split(',')
+	.map((email) => email.trim().toLowerCase())
+	.filter(Boolean);
+const authEnabled = process.env.AUTH_ENABLED !== 'false' && process.env.AUTH_ENABLED !== '0';
+const authConfigured = authEnabled && Boolean(googleClientId && googleClientSecret);
+
+if (authConfigured) {
+	passport.use(new GoogleStrategy({
+		clientID: googleClientId,
+		clientSecret: googleClientSecret,
+		callbackURL: googleCallbackUrl,
+		scope: ['profile', 'email'],
+	}, (_accessToken, _refreshToken, profile, done) => {
+		const email = profile.emails?.[0]?.value?.toLowerCase();
+		const isAllowed = allowedEmails.length === 0 || allowedEmails.includes(email);
+		if (!isAllowed) {
+			return done(null, false, { message: 'Email not authorized' });
+		}
+		return done(null, {
+			id: profile.id,
+			displayName: profile.displayName,
+			email,
+		});
+	}));
+}
+
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
+
+function requireAuth(req, res, next) {
+	if (!authEnabled) {
+		return next();
+	}
+	if (!authConfigured) {
+		res.status(503).type('html').send('<!DOCTYPE html><html><body><h2>Google OAuth not configured</h2><p>Set GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, and GOOGLE_ALLOWED_EMAILS before enabling the dashboard.</p></body></html>');
+		return;
+	}
+	if (req.isAuthenticated && req.isAuthenticated()) {
+		return next();
+	}
+	req.session.returnTo = req.originalUrl;
+	if (req.accepts('html')) {
+		return res.redirect('/auth/login');
+	}
+	return res.status(401).json({ error: 'Unauthorized' });
+}
+
+app.use((req, res, next) => {
+	if (req.path === '/' || req.path === '/status') {
+		return requireAuth(req, res, next);
+	}
+	return next();
+});
+
+app.get('/auth/login', (req, res) => {
+	if (!authEnabled) {
+		return res.redirect('/');
+	}
+	const loginPage = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>ASV relay login</title>
+  <style>
+    body { font-family: sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+    .card { max-width: 420px; margin: 3rem auto; background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1.5rem; }
+    a { display: inline-block; margin-top: 1rem; padding: .6rem 1rem; background: #2563eb; color: white; text-decoration: none; border-radius: 4px; }
+    code { background: #0f172a; padding: .1rem .3rem; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>ASV relay</h2>
+    <p>Sign in with your Google account to access the dashboard.</p>
+    ${authConfigured ? '<a href="/auth/google">Sign in with Google</a>' : '<p><strong>OAuth is not configured yet.</strong> Set <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, and <code>GOOGLE_ALLOWED_EMAILS</code>.</p>'}
+  </div>
+</body>
+</html>`;
+	res.type('html').send(loginPage);
+});
+
+app.get('/auth/google', (req, res, next) => {
+	if (!authEnabled || !authConfigured) {
+		return res.redirect('/auth/login');
+	}
+	passport.authenticate('google')(req, res, next);
+});
+
+app.get('/auth/google/callback', (req, res, next) => {
+	if (!authEnabled) {
+		return res.redirect('/');
+	}
+	passport.authenticate('google', {
+		failureRedirect: '/auth/login',
+	})(req, res, next);
+}, (req, res) => {
+	const returnTo = req.session.returnTo || '/';
+	delete req.session.returnTo;
+	res.redirect(returnTo);
+});
+
+app.get('/auth/logout', (req, res, next) => {
+	req.logout((err) => {
+		if (err) {
+			return next(err);
+		}
+		req.session.destroy(() => {
+			res.redirect('/auth/login');
+		});
+	});
+});
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: '/stream' });

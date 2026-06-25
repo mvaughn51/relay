@@ -34,6 +34,10 @@ Rock7 delivers each Iridium MO message to `/webhook` via HTTP POST. The relay im
 |--------|------|-------------|
 | `GET` | `/` | HTML status dashboard — uptime, client count, last message |
 | `GET` | `/status` | JSON health snapshot |
+| `GET` | `/auth/login` | Login page for the protected dashboard |
+| `GET` | `/auth/google` | Starts the Google OAuth sign-in flow |
+| `GET` | `/auth/google/callback` | OAuth callback endpoint |
+| `GET` | `/auth/logout` | Signs the user out |
 | `GET` | `/ping` | Keepalive probe — returns `200 OK` |
 | `POST` | `/webhook` | Receives RockBLOCK MO messages from Rock7 |
 | `WS` | `/stream` | Persistent WebSocket — clients connect here |
@@ -90,6 +94,12 @@ Each connected client receives the Rock7 fields re-broadcast as JSON:
 |---|---|
 | `PORT` | Set automatically by Render |
 | `RENDER_EXTERNAL_URL` | Set to `https://<relay-host>` to enable the keepalive ping |
+| `AUTH_ENABLED` | Set to `false` or `0` to disable dashboard authentication entirely |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID for the dashboard login |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+| `GOOGLE_ALLOWED_EMAILS` | Comma-separated Google accounts allowed to sign in |
+| `GOOGLE_CALLBACK_URL` | Optional override for the OAuth callback URL |
+| `SESSION_SECRET` | Secret used to protect session cookies |
 
 ### Keepalive
 
@@ -116,6 +126,36 @@ node relay.js
 ```
 
 Listens on port `3001` by default. Set `PORT` to override.
+
+### Dashboard authentication
+
+The dashboard is protected with Google OAuth. To enable it locally, set:
+
+```bash
+export GOOGLE_CLIENT_ID="..."
+export GOOGLE_CLIENT_SECRET="..."
+export GOOGLE_ALLOWED_EMAILS="you@example.com"
+export SESSION_SECRET="change-me"
+export GOOGLE_CALLBACK_URL="http://localhost:3001/auth/google/callback"
+```
+
+Then open `http://localhost:3001/auth/login` and sign in with an allowed Google account.
+
+To disable the login requirement entirely, set:
+
+```bash
+export AUTH_ENABLED=false
+```
+
+With authentication disabled, the dashboard at `/` and `/status` will be publicly accessible.
+
+### Google Cloud setup
+
+1. Create a Google OAuth client ID in Google Cloud Console.
+2. Add the redirect URI:
+   - `https://<relay-host>/auth/google/callback`
+   - or `http://localhost:3001/auth/google/callback` for local testing
+3. Copy the client ID and secret into the environment variables above.
 
 ---
 
